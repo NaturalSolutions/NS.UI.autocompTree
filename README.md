@@ -1,7 +1,7 @@
 NS.UI.autocompTree
 ==================
 
-Autocomplete Treeview plugin
+## Autocomplete Treeview plugin
 
 Permet l'affichage d'un arbre à autocomplétion.
 
@@ -9,6 +9,7 @@ Il se remplit via un webservice.
 
 $(#id).autocompTree(); pour l'initialisation par defaut.
 Les options possibles sont :
+```
 {
     //Les webservices doivent renvoyer une chaine au format JSON contenant au moins ces information:
     /*
@@ -61,3 +62,4 @@ Les options possibles sont :
     //Enregistrement de l'item en elle même
     thisItem : $(this)
 }
+```
