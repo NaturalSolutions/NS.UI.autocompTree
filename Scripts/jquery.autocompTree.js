@@ -164,7 +164,7 @@
             _self.focus(function () {
                 var treeContainer = $("#treeView" + _self.attr("id"));
                 treeContainer.css('display', 'block').css('width', _self.outerWidth() - 2).css('border', 'solid 1px').css('position', 'absolute').css('z-index', '100');
-                treeContainer.offset({ left: $(this).offset().left, top: $(this).position().top + $(this).outerHeight() });
+                treeContainer.offset({ left: $(this).offset().left/*, top: $(this).position().top + $(this).outerHeight()*/ });
                 if (parametres.onInputFocus) {
                     try {
                         parametres.onInputFocus();
