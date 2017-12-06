@@ -1,4 +1,4 @@
-﻿﻿/*
+/*
 *   Plugin autocompTree 1.0
 *   Permet l'affichage d'un autocomplete de donnée organisée en arbre
 *   Dépendance :
@@ -24,9 +24,9 @@
                 *   }
                 */
                 //URL des webservices
-                wsUrl: 'http://' + window.location.hostname + '/Thesaurus/App_WebServices/wsTTopic.asmx',
+                wsUrl: 'http://' + window.location.hostname + '/ThesaurusCore/api/thesaurus',
                 //Webservices pour un affichage en arborescence
-                webservices: 'initTreeByIdWLanguageWithoutDeprecated',
+                webservices: 'fastInitForCompleteTree',
                 //si l'affichage est différent de la valeur renvoyée
                 display: {
                     isDisplayDifferent: true,
@@ -35,9 +35,10 @@
                     //Nom des paramètres a récupéré dans les noeuds de l'arbre
                     //Si isDisplayDifferent = false -> la valeur sera displayValueName
                     //Affichage
-                    displayValueName: 'fullpathTranslated',
+                    displayValueName: 'title',
                     //Valeur cachée
-                    storedValueName: 'fullpath'
+                    storedValueName: 'fullpathTranslated',
+                    keepAlive: false
                 },
                 //Si l'arbre utilise un langage différent
                 language: {
@@ -61,7 +62,20 @@
                 //Fonction s'éxécutant après l'initialisation de l'objet autocompTree
                 onInputInitialize: '',
                 //Enregistrement de l'item en elle même
-                thisItem: $(this)
+                thisItem: $(this),
+                source: '',
+                WsParams: {
+                    //Param only feuilles
+                    ForLeafs: null,
+                    //Param profMin
+                    ProfMin: null,
+                    //Param profMin
+                    ProfMax: null,
+                    //Param profMax
+                    NotDisplayOutOfMax: null,
+                    //Param IsDeprected
+                    IsDeprecated: null
+                }
             }
 
         var methods = {
@@ -71,20 +85,24 @@
                     var parametres = $.extend(defauts, parametres);
                 }
                 ;
-                //Information à envoyer 
+                //Information à envoyer
                 var dataToSend = '';
                 if (parametres.language.hasLanguage) {
-                    dataToSend = "{'id':'" + parametres.startId + "', language: '" + parametres.language.lng + "'}"
+                    dataToSend = '"StartNodeID":"' + parametres.startId + '", "lng": "' + parametres.language.lng + '", "IsDeprecated":false';
                 } else {
-                    dataToSend = "{'id':'" + parametres.startId + "'}"
+                    dataToSend = '"StartNodeID":"' + parametres.startId + '", "IsDeprecated":false';
                 }
-
+                for (var i in parametres.WsParams) {
+                    if (parametres.WsParams[i] != null) {
+                        dataToSend += ',"' + i + '":"' + parametres.WsParams[i] + '"';
+                    }
+                }
                 _self.each(function() {
                     var $me = $(this);
                     //On encapsule l'input ainsi que tous les éléments dans un div afin de les contrôlés
                     $me.wrapAll('<div id="divAutoComp_' + $me.attr("id") + '">');
                     var htmlInsert = '';
-                    //Si isDisplayDifferent = true on crée un input hidden afin de stocker la valeur 
+                    //Si isDisplayDifferent = true on crée un input hidden afin de stocker la valeur
                     if (parametres.display.isDisplayDifferent) {
                         //htmlInsert = '<input type="hidden" id="' + $me.attr("name") + parametres.display.suffixeId + '" name="' + $me.attr("name") + parametres.display.suffixeId + '" runat="server" enabled="true"/>'
                     }
@@ -96,7 +114,17 @@
                     $me.val(parametres.inputValue);
 
                     //Initialisation de l'arbre
-                    tree = $('#treeView' + $me.attr("id")).fancytree({
+                    //console.log($('#treeView' + $me.attr("id")));
+                    //console.log(parametres.webservices);
+                    //console.log(dataToSend);
+                    var defaultSource = {
+                        type: "POST",
+                        url: parametres.wsUrl + "/" + parametres.webservices,
+                        datatype: 'jsonp',
+                        contentType: "application/json; charset=utf-8",
+                        data: '{' + dataToSend + '}'
+                    };
+                    $('#treeView' + $me.attr("id")).fancytree({
                         debugLevel: 0,
                         extensions: ["filter"],
                         autoActivate: false,
@@ -109,15 +137,17 @@
                             nbExpand: 0
                         },
                         //defini la source pour les elts parents
-                        source: {
-                            type: "POST",
-                            url: parametres.wsUrl + "/" + parametres.webservices,
-                            datatype: 'json',
-                            contentType: "application/json; charset=utf-8",
-                            data: dataToSend
-                        },
+                        source: (parametres.source != '' ? parametres.source : defaultSource),
                         //Permet si l'arbre et en mode filter d'afficher les enfants des termes filtrés -> submatch
                         renderNode: function(event, data) {
+                            if (data.node.data.usable) {
+                                var $span = $(data.node.span);
+                                $span[0].className += ' UsableNode';
+                            } else {
+                                var $span = $(data.node.span);
+                                $span[0].className += ' NotUsableNode';
+                            }
+
                             var node = data.node;
                             if (data.tree.options.hideExpand.isHide) {
                                 data.tree.options.hideExpand.nbExpand--;
@@ -146,46 +176,67 @@
                         },
                         //evenement d'activation de l'arbre (au clique)
                         activate: function(event, data) {
-                            var tree = $("#treeView" + $me.attr("id")).fancytree('getTree');
-                            if (parametres.display.isDisplayDifferent) {
-                                $me.val(data.node.data[parametres.display.displayValueName]);
-                                $('#' + $me.attr('id') + parametres.display.suffixeId).val(data.node.data[parametres.display.storedValueName]);
-                                $("#treeView" + $me.attr("id")).css('display', 'none');
-                                tree.activateKey(false);
-                                //On désactive le pseudo blur afin qu'il ne s'éxécute plus si l'arbre a disparu et que le vrai focus n'est plus l'input
-                                $(document).undelegate();
-                            } else {
-                                $me.val(data.node.data[parametres.display.displayValueName]);
-                                $("#treeView" + $me.attr("id")).css('display', 'none');
-                                tree.activateKey(false);
-                                $(document).undelegate();
-                            }
-                            if (parametres.onItemClick) {
-                                try {
-                                    $.proxy(parametres.onItemClick(), $me);
-                                } catch (e) {
-                                    throw ('An error occured during onItemClick -> ' + e);
+                            parametres.callback(event, data);
+
+                            /*
+                            if(data.node.data.usable){
+                                if (parametres.display.isDisplayDifferent) {
+                                    $me.val(data.node.data[parametres.display.displayValueName]);
+                                    if ($('#' + $me.attr('id') + parametres.display.suffixeId).length) {
+                                        $('#' + $me.attr('id') + parametres.display.suffixeId).val(data.node.data[parametres.display.storedValueName]);
+                                        $('#' + $me.attr('id') + parametres.display.suffixeId).attr('dbId', data.node.key);
+                                    }
+                                    if (!parametres.display.keepAlive) {
+                                        $("#treeView" + $me.attr("id")).css('display', 'none');
+                                    }
+                                    tree.activateKey(false);
+                                    setTimeout(function () {
+                                        $me.css('height', 'auto');
+                                        $me.height($me[0].scrollHeight);
+                                    }, 0)
+
+                                    //On désactive le pseudo blur afin qu'il ne s'éxécute plus si l'arbre a disparu et que le vrai focus n'est plus l'input
+                                    //$(document).undelegate();
+                                } else {
+                                    $me.val(data.node.data[parametres.display.displayValueName]);
+                                    if (!parametres.display.keepAlive) {
+                                        $("#treeView" + $me.attr("id")).css('display', 'none');
+                                    }
+                                    tree.activateKey(false);
+                                    //$(document).undelegate();
                                 }
+                                if (parametres.onItemClick) {
+                                    try {
+                                        $.proxy(parametres.onItemClick(), $me);
+                                    } catch (e) {
+                                        throw ('An error occured during onItemClick -> ' + e);
+                                    }
+                                }
+                            }else{
+                                console.log("topic out of selected range");
                             }
+                            */
                         }
                     });
                     //Permet l'affichage du treeview au focus sur l'input
+
                     $me.focus(function() {
                         $("div[id^=treeView]").each(function() {
                             $(this).css('display', 'none');
                         });
                         var treeContainer = $("#treeView" + $me.attr("id"));
-                        treeContainer.css('display', 'block').css('width', $me.outerWidth() - 2).css('border', 'solid 1px').css('position', 'absolute').css('z-index', '100');
-                        treeContainer.offset({
-                            left: $(this).offset().left,
-                            top: $(this).position().top + $(this).outerHeight()
-                        });
+                        var fancytree = treeContainer.fancytree("getTree");
+
+                        fancytree.activateKey($me.attr("value"));
+
+                        treeContainer.css('display', 'block').css('width', $me.outerWidth() - 2).css('border', 'solid 1px').css('z-index', '100').css('position', 'absolute');
+                        //treeContainer.css({top: $(this).outerHeight() + 20 });
                         //Fonction qui permet d'effectuer un "blur" sur l'ensemble des éléments (input et arbre)
                         $(document).delegate("body", "click", function(event) {
                             if (!$(event.target).is("#" + $me.attr("id") + ",span[class^=fancytree], div[id^=treeView], ul")) {
                                 var treeContainer = $("#treeView" + $me.attr("id"));
                                 treeContainer.css('display', 'none');
-                                $(document).undelegate();
+                                //$(document).undelegate();
                                 if (parametres.onInputBlur) {
                                     try {
                                         $.proxy(parametres.onInputBlur(), $me);
@@ -202,45 +253,51 @@
                                 throw ('An error occured during onInputFocus -> ' + e);
                             }
                         }
+
                     });
                     //Fonction de recherche et de filtration
                     $me.keyup(function(e) {
-                        var treeHtml = $("#treeView" + $me.attr("id"));
-                        var fancytree = treeHtml.fancytree("getTree");
-                        //Si le nombrte d'élément est < a 100 on oblige l'utilisation d'au moins trois caractère pour des raisons de performances
-                        if (fancytree.count() < 100 || $me.val().length >= 3) {
-                            treeHtml.find('ul.fancytree-container li').css("padding", "1px 0 0 0");
-                            treeHtml.fancytree("getRootNode").visit(function(node) {
-                                if (node.span) {
-                                    var className = node.span.className;
-                                    if (className.indexOf('fancytree-hide') != -1) {
+                        if ($me.val().substr(0, 1) != "#") {
+                            var treeHtml = $("#treeView" + $me.attr("id"));
+                            var fancytree = treeHtml.fancytree("getTree");
+                            //Si le nombrte d'élément est < a 100 on oblige l'utilisation d'au moins trois caractère pour des raisons de performances
+                            if (fancytree.count() < 100 || $me.val().length >= 3) {
+                                treeHtml.find('ul.fancytree-container li').css("padding", "1px 0 0 0");
+                                treeHtml.fancytree("getRootNode").visit(function(node) {
+                                    if (node.span) {
+                                        var className = node.span.className;
+                                        if (className.indexOf('fancytree-hide') != -1) {
+                                            node.setExpanded(false);
+                                        }
+                                    } else {
                                         node.setExpanded(false);
                                     }
-                                } else {
-                                    node.setExpanded(false);
-                                }
-                            });
-                            match = $me.val();
-                            var n,
+                                });
                                 match = $me.val();
+                                var n,
+                                    match = $me.val();
 
-                            if (e && e.which === $.ui.keyCode.ESCAPE || $.trim(match) === "") {
-                                resetResearch(id);
-                                return;
+                                if (e && e.which === $.ui.keyCode.ESCAPE || $.trim(match) === "") {
+                                    fancytree.clearFilter();
+                                    treeHtml.fancytree("getRootNode").visit(function(node) {
+                                        node.setExpanded(false);
+                                    });
+                                    return;
+                                }
+                                n = fancytree.filterNodes(match, false);
+                                while (treeHtml.find('.fancytree-submatch:not(.fancytree-expanded)').find('.fancytree-expander').length) {
+                                    treeHtml.find('.fancytree-submatch:not(.fancytree-expanded)').find('.fancytree-expander').click();
+                                }
+                                if (treeHtml.find('.fancytree-match').length < 3 && treeHtml.find('.fancytree-match').find('.fancytree-match').length)
+                                    treeHtml.find('.fancytree-match').find('.fancytree-expander').click()
+                                treeHtml.find('ul.fancytree-container li').css("padding", "0px 0 0 0");
                             }
-                            n = fancytree.filterNodes(match, false);
-                            while (treeHtml.find('.fancytree-submatch:not(.fancytree-expanded)').find('.fancytree-expander').length) {
-                                treeHtml.find('.fancytree-submatch:not(.fancytree-expanded)').find('.fancytree-expander').click();
+                            if ($me.val().length == 0) {
+                                fancytree.clearFilter();
+                                treeHtml.fancytree("getRootNode").visit(function(node) {
+                                    node.setExpanded(false);
+                                });
                             }
-                            if (treeHtml.find('.fancytree-match').length < 3 && treeHtml.find('.fancytree-match').find('.fancytree-match').length)
-                                treeHtml.find('.fancytree-match').find('.fancytree-expander').click()
-                            treeHtml.find('ul.fancytree-container li').css("padding", "0px 0 0 0");
-                        }
-                        if ($me.val().length == 0) {
-                            fancytree.clearFilter();
-                            treeHtml.fancytree("getRootNode").visit(function(node) {
-                                node.setExpanded(false);
-                            });
                         }
                     });
 
